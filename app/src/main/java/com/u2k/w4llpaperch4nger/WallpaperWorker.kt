@@ -21,7 +21,6 @@ class WallpaperWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // 保存されているフォルダを取得する
             val folderUriString = ImageStorage.getFolder(applicationContext).first()
                 ?: return Result.failure()
 
@@ -32,15 +31,12 @@ class WallpaperWorker(
                 return Result.failure()
             }
 
-            // ランダムに1枚選ぶ
-            val chosenUri = images.random()
+            val chosenImage = images.random()
 
-            // 画像を読み込む
-            val inputStream = applicationContext.contentResolver.openInputStream(chosenUri)
+            val inputStream = applicationContext.contentResolver.openInputStream(chosenImage.uri)
             val originalBitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
 
-            // 画面サイズを取得する
             val displayMetrics = DisplayMetrics()
             val windowManager = applicationContext.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
             @Suppress("DEPRECATION")
@@ -52,12 +48,10 @@ class WallpaperWorker(
                 displayMetrics.heightPixels
             )
 
-            // 壁紙・ロック画面の両方に設定する
             val wallpaperManager = WallpaperManager.getInstance(applicationContext)
             wallpaperManager.setBitmap(fittedBitmap, null, true, WallpaperManager.FLAG_SYSTEM)
             wallpaperManager.setBitmap(fittedBitmap, null, true, WallpaperManager.FLAG_LOCK)
 
-            // ★追加:切り替えに成功した日時を記録する
             ImageStorage.saveLastUpdated(applicationContext, System.currentTimeMillis())
 
             Result.success()

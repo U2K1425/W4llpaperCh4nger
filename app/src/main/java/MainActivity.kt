@@ -7,9 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -17,12 +14,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.items
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,11 +34,14 @@ class MainActivity : ComponentActivity() {
 }
 
 // 指定したフォルダの中から、画像ファイルのURIだけを一覧取得する
-fun listImagesInFolder(context: android.content.Context, folderUri: Uri): List<Uri> {
+// 画像1件分の情報(場所とファイル名)をまとめて扱うためのデータクラス
+data class ImageFile(val uri: Uri, val name: String)
+
+fun listImagesInFolder(context: android.content.Context, folderUri: Uri): List<ImageFile> {
     val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     return folder.listFiles()
         .filter { it.isFile && (it.type?.startsWith("image/") == true) }
-        .map { it.uri }
+        .map { ImageFile(it.uri, it.name ?: "(不明なファイル名)") }
 }
 
 @Composable
@@ -51,7 +50,7 @@ fun ImagePickerScreen() {
     val coroutineScope = rememberCoroutineScope()
 
     var folderUri by remember { mutableStateOf<Uri?>(null) }
-    var images by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var images by remember { mutableStateOf<List<ImageFile>>(emptyList()) }
 
     val intervalOptions = listOf(
         "15分ごと" to 15,
@@ -146,24 +145,10 @@ fun ImagePickerScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Box {
-            Button(onClick = {
-                val constraints = androidx.work.Constraints.Builder()
-                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-                    .build()
-
-                val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
-                    selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
-                )
-                    .setConstraints(constraints)
-                    .build()
-
-                androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                    "wallpaper_change_work",
-                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
-                    workRequest
-                )
-            }) {
-                Text("自動切り替えを開始する")
+            Button(onClick = { dropdownExpanded = true }) {
+                val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
+                    ?: "${selectedIntervalMinutes}分ごと"
+                Text("切り替え間隔: $currentLabel")
             }
 
             androidx.compose.material3.DropdownMenu(
@@ -187,21 +172,17 @@ fun ImagePickerScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+        androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            items(images) { uri ->
-                AsyncImage(
-                    model = uri,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+            items(images) { imageFile ->
+                Text(
+                    text = imageFile.name,
                     modifier = Modifier
-                        .padding(4.dp)
-                        .height(100.dp)
                         .fillMaxWidth()
+                        .padding(vertical = 4.dp)
                 )
             }
         }
@@ -209,9 +190,15 @@ fun ImagePickerScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = {
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                .build()
+
             val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
                 selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
-            ).build()
+            )
+                .setConstraints(constraints)
+                .build()
 
             androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "wallpaper_change_work",
