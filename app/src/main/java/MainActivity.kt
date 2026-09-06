@@ -53,7 +53,6 @@ fun ImagePickerScreen() {
     var folderUri by remember { mutableStateOf<Uri?>(null) }
     var images by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-    // 選択肢一覧:表示名 と 実際の分数のペア
     val intervalOptions = listOf(
         "15分ごと" to 15,
         "1時間ごと" to 60,
@@ -65,6 +64,9 @@ fun ImagePickerScreen() {
     var selectedIntervalMinutes by remember { mutableStateOf(60) }
     var dropdownExpanded by remember { mutableStateOf(false) }
 
+    var workStatus by remember { mutableStateOf("停止中") }
+    var lastUpdatedText by remember { mutableStateOf("まだ切り替えられていません") }
+
     LaunchedEffect(Unit) {
         ImageStorage.getFolder(context).collect { savedUriString ->
             if (savedUriString != null) {
@@ -75,10 +77,33 @@ fun ImagePickerScreen() {
         }
     }
 
-    // 保存済みの間隔設定を読み込む
     LaunchedEffect(Unit) {
         ImageStorage.getInterval(context).collect { minutes ->
             selectedIntervalMinutes = minutes
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        androidx.work.WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkFlow("wallpaper_change_work")
+            .collect { infos ->
+                val info = infos.firstOrNull()
+                workStatus = when (info?.state) {
+                    androidx.work.WorkInfo.State.ENQUEUED,
+                    androidx.work.WorkInfo.State.RUNNING -> "稼働中"
+                    else -> "停止中"
+                }
+            }
+    }
+
+    LaunchedEffect(Unit) {
+        ImageStorage.getLastUpdated(context).collect { millis ->
+            lastUpdatedText = if (millis != null) {
+                val sdf = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm", java.util.Locale.JAPAN)
+                "最終切替: ${sdf.format(java.util.Date(millis))}"
+            } else {
+                "まだ切り替えられていません"
+            }
         }
     }
 
@@ -107,6 +132,11 @@ fun ImagePickerScreen() {
             else "選択中の画像: ${images.size}枚"
         )
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text("状態: $workStatus")
+        Text(lastUpdatedText)
+
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = { folderPicker.launch(null) }) {
@@ -115,7 +145,6 @@ fun ImagePickerScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 間隔選択のドロップダウン
         Box {
             Button(onClick = { dropdownExpanded = true }) {
                 val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
@@ -177,6 +206,14 @@ fun ImagePickerScreen() {
             )
         }) {
             Text("自動切り替えを開始する")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = {
+            androidx.work.WorkManager.getInstance(context).cancelUniqueWork("wallpaper_change_work")
+        }) {
+            Text("自動切り替えを停止する")
         }
     }
 }

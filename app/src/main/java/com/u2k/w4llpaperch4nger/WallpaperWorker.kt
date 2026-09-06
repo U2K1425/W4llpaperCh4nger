@@ -57,6 +57,9 @@ class WallpaperWorker(
             wallpaperManager.setBitmap(fittedBitmap, null, true, WallpaperManager.FLAG_SYSTEM)
             wallpaperManager.setBitmap(fittedBitmap, null, true, WallpaperManager.FLAG_LOCK)
 
+            // ★追加:切り替えに成功した日時を記録する
+            ImageStorage.saveLastUpdated(applicationContext, System.currentTimeMillis())
+
             Result.success()
         } catch (e: Exception) {
             Result.failure()
