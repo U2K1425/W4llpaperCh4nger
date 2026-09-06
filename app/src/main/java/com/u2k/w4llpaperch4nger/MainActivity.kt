@@ -53,7 +53,18 @@ fun ImagePickerScreen() {
     var folderUri by remember { mutableStateOf<Uri?>(null) }
     var images by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-    // 起動時に、保存済みのフォルダがあれば読み込む
+    // 選択肢一覧:表示名 と 実際の分数のペア
+    val intervalOptions = listOf(
+        "15分ごと" to 15,
+        "1時間ごと" to 60,
+        "3時間ごと" to 180,
+        "6時間ごと" to 360,
+        "12時間ごと" to 720,
+        "24時間ごと" to 1440
+    )
+    var selectedIntervalMinutes by remember { mutableStateOf(60) }
+    var dropdownExpanded by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         ImageStorage.getFolder(context).collect { savedUriString ->
             if (savedUriString != null) {
@@ -64,20 +75,23 @@ fun ImagePickerScreen() {
         }
     }
 
-    // フォルダ選択ダイアログを起動する仕組み
+    // 保存済みの間隔設定を読み込む
+    LaunchedEffect(Unit) {
+        ImageStorage.getInterval(context).collect { minutes ->
+            selectedIntervalMinutes = minutes
+        }
+    }
+
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            // フォルダへの永続的なアクセス権限を取得する
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-
             folderUri = uri
             images = listImagesInFolder(context, uri)
-
             coroutineScope.launch {
                 ImageStorage.saveFolder(context, uri.toString())
             }
@@ -95,17 +109,46 @@ fun ImagePickerScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Button(onClick = {
-            folderPicker.launch(null)
-        }) {
+        Button(onClick = { folderPicker.launch(null) }) {
             Text("画像フォルダを選択する")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 間隔選択のドロップダウン
+        Box {
+            Button(onClick = { dropdownExpanded = true }) {
+                val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
+                    ?: "${selectedIntervalMinutes}分ごと"
+                Text("切り替え間隔: $currentLabel")
+            }
+
+            androidx.compose.material3.DropdownMenu(
+                expanded = dropdownExpanded,
+                onDismissRequest = { dropdownExpanded = false }
+            ) {
+                intervalOptions.forEach { (label, minutes) ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            selectedIntervalMinutes = minutes
+                            dropdownExpanded = false
+                            coroutineScope.launch {
+                                ImageStorage.saveInterval(context, minutes)
+                            }
+                        }
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
         ) {
             items(images) { uri ->
                 AsyncImage(
@@ -118,6 +161,22 @@ fun ImagePickerScreen() {
                         .fillMaxWidth()
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
+                selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
+            ).build()
+
+            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "wallpaper_change_work",
+                androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                workRequest
+            )
+        }) {
+            Text("自動切り替えを開始する")
         }
     }
 }
