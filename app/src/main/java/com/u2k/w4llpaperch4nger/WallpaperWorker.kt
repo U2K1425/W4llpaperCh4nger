@@ -62,7 +62,7 @@ class WallpaperWorker(
 
             Result.success()
         } catch (e: Exception) {
-            Result.failure()
+            Result.retry()
         }
     }
 }

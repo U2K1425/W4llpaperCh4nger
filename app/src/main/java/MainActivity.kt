@@ -146,10 +146,24 @@ fun ImagePickerScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Box {
-            Button(onClick = { dropdownExpanded = true }) {
-                val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
-                    ?: "${selectedIntervalMinutes}分ごと"
-                Text("切り替え間隔: $currentLabel")
+            Button(onClick = {
+                val constraints = androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+
+                val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
+                    selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
+                )
+                    .setConstraints(constraints)
+                    .build()
+
+                androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                    "wallpaper_change_work",
+                    androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                    workRequest
+                )
+            }) {
+                Text("自動切り替えを開始する")
             }
 
             androidx.compose.material3.DropdownMenu(
