@@ -7,10 +7,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.lazy.items
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,8 +36,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 指定したフォルダの中から、画像ファイルのURIだけを一覧取得する
-// 画像1件分の情報(場所とファイル名)をまとめて扱うためのデータクラス
 data class ImageFile(val uri: Uri, val name: String)
 
 fun listImagesInFolder(context: android.content.Context, folderUri: Uri): List<ImageFile> {
@@ -44,6 +45,7 @@ fun listImagesInFolder(context: android.content.Context, folderUri: Uri): List<I
         .map { ImageFile(it.uri, it.name ?: "(不明なファイル名)") }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImagePickerScreen() {
     val context = LocalContext.current
@@ -122,99 +124,146 @@ fun ImagePickerScreen() {
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            if (folderUri == null) "フォルダが未選択です"
-            else "選択中の画像: ${images.size}枚"
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text("状態: $workStatus")
-        Text(lastUpdatedText)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = { folderPicker.launch(null) }) {
-            Text("画像フォルダを選択する")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("壁紙自動変更") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            )
         }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Box {
-            Button(onClick = { dropdownExpanded = true }) {
-                val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
-                    ?: "${selectedIntervalMinutes}分ごと"
-                Text("切り替え間隔: $currentLabel")
-            }
-
-            androidx.compose.material3.DropdownMenu(
-                expanded = dropdownExpanded,
-                onDismissRequest = { dropdownExpanded = false }
-            ) {
-                intervalOptions.forEach { (label, minutes) ->
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            selectedIntervalMinutes = minutes
-                            dropdownExpanded = false
-                            coroutineScope.launch {
-                                ImageStorage.saveInterval(context, minutes)
-                            }
-                        }
+            // フォルダ設定カード
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        if (folderUri == null) "フォルダが未選択です"
+                        else "選択中の画像: ${images.size}枚",
+                        style = MaterialTheme.typography.titleMedium
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { folderPicker.launch(null) }) {
+                        Icon(Icons.Default.Folder, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("画像フォルダを選択する")
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // 間隔設定カード
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("切り替え間隔", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box {
+                        OutlinedButton(onClick = { dropdownExpanded = true }) {
+                            Icon(Icons.Default.Schedule, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val currentLabel = intervalOptions.firstOrNull { it.second == selectedIntervalMinutes }?.first
+                                ?: "${selectedIntervalMinutes}分ごと"
+                            Text(currentLabel)
+                        }
 
-        androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            items(images) { imageFile ->
-                Text(
-                    text = imageFile.name,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                )
+                        DropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            intervalOptions.forEach { (label, minutes) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        selectedIntervalMinutes = minutes
+                                        dropdownExpanded = false
+                                        coroutineScope.launch {
+                                            ImageStorage.saveInterval(context, minutes)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // 状態表示カード
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("状態", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("稼働状況: $workStatus")
+                    Text(lastUpdatedText)
+                }
+            }
 
-        Button(onClick = {
-            val constraints = androidx.work.Constraints.Builder()
-                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-                .build()
+            // 操作ボタン(開始・停止)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(
+                    onClick = {
+                        val constraints = androidx.work.Constraints.Builder()
+                            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                            .build()
 
-            val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
-                selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
-            )
-                .setConstraints(constraints)
-                .build()
+                        val workRequest = androidx.work.PeriodicWorkRequestBuilder<WallpaperWorker>(
+                            selectedIntervalMinutes.toLong(), java.util.concurrent.TimeUnit.MINUTES
+                        )
+                            .setConstraints(constraints)
+                            .build()
 
-            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "wallpaper_change_work",
-                androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
-                workRequest
-            )
-        }) {
-            Text("自動切り替えを開始する")
-        }
+                        androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                            "wallpaper_change_work",
+                            androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                            workRequest
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("開始")
+                }
 
-        Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        androidx.work.WorkManager.getInstance(context).cancelUniqueWork("wallpaper_change_work")
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Stop, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("停止")
+                }
+            }
 
-        Button(onClick = {
-            androidx.work.WorkManager.getInstance(context).cancelUniqueWork("wallpaper_change_work")
-        }) {
-            Text("自動切り替えを停止する")
+            // 画像ファイル名リスト
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                LazyColumn(modifier = Modifier.padding(8.dp)) {
+                    items(images) { imageFile ->
+                        Text(
+                            text = imageFile.name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp, horizontal = 8.dp)
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
         }
     }
 }
